@@ -12,12 +12,12 @@ class Grid {
 private:
   std::size_t rows_;
   std::size_t cols_;
-  std::size_t per_row_; // number of doubles per row
+  std::size_t stride_; // number of doubles per row
   std::vector<double> cells_;
 
 public:
   // round the size of a row up to the nearest multiple of the cache line size (64) so that each row starts at the beginning of each cache line
-  Grid(std::size_t rows, std::size_t cols) : rows_{rows}, cols_{cols}, per_row_{(cols + 7) & ~std::size_t{7}}, cells_(rows * per_row_, 0.0) {}
+  Grid(std::size_t rows, std::size_t cols) : rows_{rows}, cols_{cols}, stride_{(cols + 7) & ~std::size_t{7}}, cells_(rows * stride_, 0.0) {}
 
   std::size_t rows() const {
     return rows_;
@@ -27,16 +27,16 @@ public:
     return cols_;
   }
 
-  std::size_t per_row() const {
-    return per_row_;
+  std::size_t stride() const {
+    return stride_;
   }
 
   double& operator()(std::size_t i, std::size_t j) {
-    return cells_[i * per_row_ + j];
+    return cells_[i * stride_ + j];
   }
 
   double  operator()(std::size_t i, std::size_t j) const {
-    return cells_[i * per_row_ + j];
+    return cells_[i * stride_ + j];
   }
 
   const double* data() const { 
@@ -58,17 +58,19 @@ public:
 
 /* views: 
 - Grid owns memory
-- views hold address to that same memory, but it doesn't own it
-- GridView going out of scope does not free the memory
+- views hold pointer to that same memory, but it doesn't own it
+- view going out of scope does not free the memory
+- copying a Grid copies 8 MB
+- copying a view copies 8*4 = 32 B
 */
 struct ConstGridView {
   const double* __restrict cells;
   std::size_t rows;
   std::size_t cols;
-  std::size_t per_row;
+  std::size_t stride;
 
   double operator()(std::size_t i, std::size_t j) const {
-    return cells[i * per_row + j];
+    return cells[i * stride + j];
   }
 };
 
@@ -76,18 +78,18 @@ struct GridView {
   double* __restrict cells;
   std::size_t rows;
   std::size_t cols;
-  std::size_t per_row;
+  std::size_t stride;
 
   double& operator()(std::size_t i, std::size_t j) const {
-    return cells[i * per_row + j];
+    return cells[i * stride + j];
   }
 };
 
 // Apply the five-point stencil over all interior points, copying the boundary
 // values unchanged from old_grid to new_grid. Implement your solution here.
 void apply_stencil(const Grid& old_grid, Grid& new_grid) {
-  ConstGridView in{old_grid.data(), old_grid.rows(), old_grid.cols(), old_grid.per_row()};
-  GridView out{new_grid.data(), new_grid.rows(), new_grid.cols(), new_grid.per_row()};
+  ConstGridView in{old_grid.data(), old_grid.rows(), old_grid.cols(), old_grid.stride()};
+  GridView out{new_grid.data(), new_grid.rows(), new_grid.cols(), new_grid.stride()};
 
   for (std::size_t i = 0; i < in.rows; i++) {
     out(i, 0) = in(i, 0);
@@ -102,9 +104,9 @@ void apply_stencil(const Grid& old_grid, Grid& new_grid) {
   // this is safe because each iteration of the inner loop only mutates its own row
   #pragma omp parallel for
   for (std::size_t i = 1; i < in.rows - 1; i++) {  
-    const double* top = in.cells + (i - 1) * in.per_row;
-    const double* center = in.cells + i * in.per_row;
-    const double* bottom = in.cells + (i + 1) * in.per_row;
+    const double* top = in.cells + (i - 1) * in.stride;
+    const double* center = in.cells + i * in.stride;
+    const double* bottom = in.cells + (i + 1) * in.stride;
 
     for (std::size_t j = 1; j < in.cols - 1; j++) {
       // previously each cell access demanded a multiply and an add
