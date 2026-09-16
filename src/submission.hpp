@@ -27,6 +27,10 @@ public:
     return cols_;
   }
 
+  std::size_t per_row() const {
+    return per_row_;
+  }
+
   double& operator()(std::size_t i, std::size_t j) {
     return cells_[i * per_row_ + j];
   }
@@ -34,11 +38,17 @@ public:
   double  operator()(std::size_t i, std::size_t j) const {
     return cells_[i * per_row_ + j];
   }
+
+  const double* data() const { 
+    return cells_.data(); 
+  }
 };  
 
 // Apply the five-point stencil over all interior points, copying the boundary
 // values unchanged from old_grid to new_grid. Implement your solution here.
 void apply_stencil(const Grid& old_grid, Grid& new_grid) {
+  const double* old_cells = old_grid.data();
+
   const std::size_t rows = old_grid.rows();
   const std::size_t cols = old_grid.cols();
 
@@ -52,9 +62,15 @@ void apply_stencil(const Grid& old_grid, Grid& new_grid) {
     new_grid(rows - 1, j) = old_grid(rows - 1, j);
   }
 
-  for (std::size_t i = 1; i < rows - 1; i++) {
+  for (std::size_t i = 1; i < rows - 1; i++) {  
+    const double* top = old_cells + (i - 1) * old_grid.per_row();
+    const double* center = old_cells + i * old_grid.per_row();
+    const double* bottom = old_cells + (i + 1) * old_grid.per_row();
+
     for (std::size_t j = 1; j < cols - 1; j++) {
-      new_grid(i, j) = 0.5 * old_grid(i, j) + 0.125 * (old_grid(i - 1, j) + old_grid(i + 1, j) + old_grid(i, j - 1) + old_grid(i, j + 1));
+      // previously each cell access demanded a multiply and an add
+      // explicitly defining each stride moves this work out of the inner loop
+      new_grid(i, j) = 0.5 * center[j] + 0.125 * (top[j] + bottom[j] + center[j - 1] + center[j + 1]);
     }
   }
 }
