@@ -47,7 +47,12 @@ public:
 // Apply the five-point stencil over all interior points, copying the boundary
 // values unchanged from old_grid to new_grid. Implement your solution here.
 void apply_stencil(const Grid& old_grid, Grid& new_grid) {
-  const double* old_cells = old_grid.data();
+  const double* __restrict old_cells = old_grid.data();
+  /* what restrict does:
+  - tells the compiler that the pointer is not aliased with any other pointer
+  - without restrict, the compiler can't read all 4 cells at once and process them in parallel
+  - i noticed that this hardly makes a difference in performance probably because this problem is bottlenecked by memory access and not math
+  */
 
   const std::size_t rows = old_grid.rows();
   const std::size_t cols = old_grid.cols();
