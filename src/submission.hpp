@@ -50,6 +50,7 @@ void apply_stencil(const Grid& old_grid, Grid& new_grid) {
   const double* __restrict old_cells = old_grid.data();
   /* what restrict does:
   - tells the compiler that the pointer is not aliased with any other pointer
+  - allows compiler to hold values in registers and process cells in batches instead of fetching from memory after every write
   - without restrict, the compiler can't read all 4 cells at once and process them in parallel
   - i noticed that this hardly makes a difference in performance probably because this problem is bottlenecked by memory access and not math
   */
@@ -67,6 +68,8 @@ void apply_stencil(const Grid& old_grid, Grid& new_grid) {
     new_grid(rows - 1, j) = old_grid(rows - 1, j);
   }
 
+  #pragma omp parallel for
+  // this is safe because each iteration of the inner loop only mutates its own row
   for (std::size_t i = 1; i < rows - 1; i++) {  
     const double* top = old_cells + (i - 1) * old_grid.per_row();
     const double* center = old_cells + i * old_grid.per_row();
