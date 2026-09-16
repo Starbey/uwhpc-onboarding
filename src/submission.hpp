@@ -42,43 +42,74 @@ public:
   const double* data() const { 
     return cells_.data(); 
   }
+
+  double* data() { 
+    return cells_.data(); 
+  }
 };  
+
+/* what restrict does:
+- tells the compiler that the pointer is not aliased with any other pointer
+- verified two separate Grid objects in the harness code
+- allows compiler to hold values in registers and process cells in batches instead of fetching from memory after every write
+- without restrict, the compiler can't read all 4 cells at once and process them in parallel
+- i noticed that this hardly makes a difference in performance probably because this problem is bottlenecked by memory access and not math
+*/
+
+/* views: 
+- Grid owns memory
+- views hold address to that same memory, but it doesn't own it
+- GridView going out of scope does not free the memory
+*/
+struct ConstGridView {
+  const double* __restrict cells;
+  std::size_t rows;
+  std::size_t cols;
+  std::size_t per_row;
+
+  double operator()(std::size_t i, std::size_t j) const {
+    return cells[i * per_row + j];
+  }
+};
+
+struct GridView {
+  double* __restrict cells;
+  std::size_t rows;
+  std::size_t cols;
+  std::size_t per_row;
+
+  double& operator()(std::size_t i, std::size_t j) const {
+    return cells[i * per_row + j];
+  }
+};
 
 // Apply the five-point stencil over all interior points, copying the boundary
 // values unchanged from old_grid to new_grid. Implement your solution here.
 void apply_stencil(const Grid& old_grid, Grid& new_grid) {
-  const double* __restrict old_cells = old_grid.data();
-  /* what restrict does:
-  - tells the compiler that the pointer is not aliased with any other pointer
-  - allows compiler to hold values in registers and process cells in batches instead of fetching from memory after every write
-  - without restrict, the compiler can't read all 4 cells at once and process them in parallel
-  - i noticed that this hardly makes a difference in performance probably because this problem is bottlenecked by memory access and not math
-  */
+  ConstGridView in{old_grid.data(), old_grid.rows(), old_grid.cols(), old_grid.per_row()};
+  GridView out{new_grid.data(), new_grid.rows(), new_grid.cols(), new_grid.per_row()};
 
-  const std::size_t rows = old_grid.rows();
-  const std::size_t cols = old_grid.cols();
-
-  for (std::size_t i = 0; i < rows; i++) {
-    new_grid(i, 0) = old_grid(i, 0);
-    new_grid(i, cols - 1) = old_grid(i, cols - 1);
+  for (std::size_t i = 0; i < in.rows; i++) {
+    out(i, 0) = in(i, 0);
+    out(i, in.cols - 1) = in(i, in.cols - 1);
   }
 
-  for (std::size_t j = 0; j < cols; j++) {
-    new_grid(0, j) = old_grid(0, j);
-    new_grid(rows - 1, j) = old_grid(rows - 1, j);
+  for (std::size_t j = 0; j < in.cols; j++) {
+    out(0, j) = in(0, j);
+    out(in.rows - 1, j) = in(in.rows - 1, j);
   }
 
-  #pragma omp parallel for
   // this is safe because each iteration of the inner loop only mutates its own row
-  for (std::size_t i = 1; i < rows - 1; i++) {  
-    const double* top = old_cells + (i - 1) * old_grid.per_row();
-    const double* center = old_cells + i * old_grid.per_row();
-    const double* bottom = old_cells + (i + 1) * old_grid.per_row();
+  #pragma omp parallel for
+  for (std::size_t i = 1; i < in.rows - 1; i++) {  
+    const double* top = in.cells + (i - 1) * in.per_row;
+    const double* center = in.cells + i * in.per_row;
+    const double* bottom = in.cells + (i + 1) * in.per_row;
 
-    for (std::size_t j = 1; j < cols - 1; j++) {
+    for (std::size_t j = 1; j < in.cols - 1; j++) {
       // previously each cell access demanded a multiply and an add
       // explicitly defining each stride moves this work out of the inner loop
-      new_grid(i, j) = 0.5 * center[j] + 0.125 * (top[j] + bottom[j] + center[j - 1] + center[j + 1]);
+      out(i, j) = 0.5 * center[j] + 0.125 * (top[j] + bottom[j] + center[j - 1] + center[j + 1]);
     }
   }
 }
