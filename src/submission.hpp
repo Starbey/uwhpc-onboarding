@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <vector>
+#include <algorithm>
 
 // Starter Grid for the 2D heat-diffusion problem.
 //
@@ -53,16 +54,14 @@ public:
 - verified two separate Grid objects in the harness code
 - allows compiler to hold values in registers and process cells in batches instead of fetching from memory after every write
 - without restrict, the compiler can't read all 4 cells at once and process them in parallel
-- i noticed that this hardly makes a difference in performance probably because this problem is bottlenecked by memory access and not math
-*/
+- i noticed that this hardly makes a difference in performance probably because this problem is bottlenecked by memory access and not math*/
 
 /* views: 
 - Grid owns memory
 - views hold pointer to that same memory, but it doesn't own it
 - view going out of scope does not free the memory
 - copying a Grid copies 8 MB
-- copying a view copies 8*4 = 32 B
-*/
+- copying a view copies 8*4 = 32 B*/
 struct ConstGridView {
   const double* __restrict cells;
   std::size_t rows;
@@ -94,19 +93,18 @@ void apply_stencil(const Grid& old_grid, Grid& new_grid) {
     out(i, in.cols - 1) = in(i, in.cols - 1);
   }
 
-  for (std::size_t j = 0; j < in.cols; j++) {
-    out(0, j) = in(0, j);
-    out(in.rows - 1, j) = in(in.rows - 1, j);
-  }
+  // hand copying of top and bottom boundary rows to copy_n
+  // copy_n uses wide instructions: good in this case where memory is contiguous
+  std::copy_n(in.cells, in.cols, out.cells);
+  std::copy_n(in.cells + (in.rows - 1) * in.stride, in.cols, out.cells + (out.rows - 1) * out.stride);
 
   /* my processor has 6 performance cores and 8 efficiency cores. efficiency cores are slower, so we want less work on those.
-  #pragma omp parallel for splits rows into equal chunks by default. 
-  dynamic schedule hands out work as threads become free, so fast cores take more chunks. hinders performance on evaluator though.
+  #pragma omp parallel for splits rows into equal chunks by default. dynamic schedule hands out work as threads become free, 
+  so fast cores take more chunks. hinders performance on evaluator though, so i stuck with static
   
   observation: cores' private caches are too small to hold any meaningful fraction of a whole grid, so they need to fetch from the shared cache
   at the start of each time step. a lot of data is moved on the shared interconnect, so there's a cache bandwidth bottleneck s.t. 
-  increasing # of threads only worsens performance
-*/ 
+  increasing # of threads only worsens performance */ 
   #pragma omp parallel for schedule(static)
   for (std::size_t i = 1; i < in.rows - 1; i++) {  
     const double* top = in.cells + (i - 1) * in.stride;
