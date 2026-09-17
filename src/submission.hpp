@@ -85,8 +85,6 @@ struct GridView {
   }
 };
 
-// Apply the five-point stencil over all interior points, copying the boundary
-// values unchanged from old_grid to new_grid. Implement your solution here.
 void apply_stencil(const Grid& old_grid, Grid& new_grid) {
   ConstGridView in{old_grid.data(), old_grid.rows(), old_grid.cols(), old_grid.stride()};
   GridView out{new_grid.data(), new_grid.rows(), new_grid.cols(), new_grid.stride()};
@@ -101,8 +99,13 @@ void apply_stencil(const Grid& old_grid, Grid& new_grid) {
     out(in.rows - 1, j) = in(in.rows - 1, j);
   }
 
-  // this is safe because each iteration of the inner loop only mutates its own row
-  #pragma omp parallel for
+  /* my processor has 6 performance cores and 6 efficiency cores. efficiency cores are slower, so we want less work on those.
+  #pragma omp parallel for splits rows into equal chunks by default. 
+  this schedule hands out work as threads become free, so fast cores take more chunks
+  
+  why 16 rows per chunk? honestly i just tried a few numbers and this worked best for my machine. 
+  if the batch size is small, there's too much coordination overhead. if batch size is large, some threads get no work*/
+  #pragma omp parallel for schedule(dynamic, 16)
   for (std::size_t i = 1; i < in.rows - 1; i++) {  
     const double* top = in.cells + (i - 1) * in.stride;
     const double* center = in.cells + i * in.stride;
