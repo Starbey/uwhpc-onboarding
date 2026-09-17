@@ -116,7 +116,7 @@ void apply_stencil(const Grid& old_grid, Grid& new_grid) {
   at the start of each time step. a lot of data is moved on the shared interconnect, so there's a cache bandwidth bottleneck s.t. 
   increasing # of threads only worsens performance
 */ 
-  #pragma omp parallel for schedule(dynamic, 16)
+  #pragma omp parallel for schedule(static)
   for (std::size_t i = 1; i < in.rows - 1; i++) {  
     const double* top = in.cells + (i - 1) * in.stride;
     const double* center = in.cells + i * in.stride;
