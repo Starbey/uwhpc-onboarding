@@ -99,22 +99,26 @@ void apply_stencil(const Grid& old_grid, Grid& new_grid) {
     out(in.rows - 1, j) = in(in.rows - 1, j);
   }
 
-  /* my processor has 6 performance cores and 6 efficiency cores. efficiency cores are slower, so we want less work on those.
+  /* my processor has 6 performance cores and 8 efficiency cores. efficiency cores are slower, so we want less work on those.
   #pragma omp parallel for splits rows into equal chunks by default. 
   this schedule hands out work as threads become free, so fast cores take more chunks
+
+  dynamic: put rows in a pile, threads take a batch of 16 whenever they're free
   
   why 16 rows per chunk? honestly i just tried a few numbers and this worked best for my machine. 
-  if the batch size is small, there's too much coordination overhead. if batch size is large, some threads get no work*/
+  if the batch size is small, there's too much coordination overhead. if batch size is large, 
+  performance cores idle after finishing their batch and now we're bottlenecked by the efficiency cores*/
   #pragma omp parallel for schedule(dynamic, 16)
   for (std::size_t i = 1; i < in.rows - 1; i++) {  
     const double* top = in.cells + (i - 1) * in.stride;
     const double* center = in.cells + i * in.stride;
     const double* bottom = in.cells + (i + 1) * in.stride;
+    double* out_row = out.cells + i * out.stride;
 
     for (std::size_t j = 1; j < in.cols - 1; j++) {
       // previously each cell access demanded a multiply and an add
       // explicitly defining each stride moves this work out of the inner loop
-      out(i, j) = 0.5 * center[j] + 0.125 * (top[j] + bottom[j] + center[j - 1] + center[j + 1]);
+      out_row[j] = 0.5 * center[j] + 0.125 * (top[j] + bottom[j] + center[j - 1] + center[j + 1]);
     }
   }
 }
