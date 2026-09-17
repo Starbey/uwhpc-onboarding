@@ -107,7 +107,15 @@ void apply_stencil(const Grid& old_grid, Grid& new_grid) {
   
   why 16 rows per chunk? honestly i just tried a few numbers and this worked best for my machine. 
   if the batch size is small, there's too much coordination overhead. if batch size is large, 
-  performance cores idle after finishing their batch and now we're bottlenecked by the efficiency cores*/
+  performance cores idle after finishing their batch and now we're stuck waiting for the efficiency cores
+  16 isn't optimal for all grid sizes. for example, if grid has 16 interior rows, then each thread only gets 1 row
+
+  TODO: test static vs. dynamic scheduling on evaluator
+  
+  observation: cores' private caches are too small to hold any meaningful fraction of a whole grid, so they need to fetch from the shared cache
+  at the start of each time step. a lot of data is moved on the shared interconnect, so there's a cache bandwidth bottleneck s.t. 
+  increasing # of threads only worsens performance
+*/ 
   #pragma omp parallel for schedule(dynamic, 16)
   for (std::size_t i = 1; i < in.rows - 1; i++) {  
     const double* top = in.cells + (i - 1) * in.stride;
