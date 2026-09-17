@@ -101,16 +101,7 @@ void apply_stencil(const Grid& old_grid, Grid& new_grid) {
 
   /* my processor has 6 performance cores and 8 efficiency cores. efficiency cores are slower, so we want less work on those.
   #pragma omp parallel for splits rows into equal chunks by default. 
-  this schedule hands out work as threads become free, so fast cores take more chunks
-
-  dynamic: put rows in a pile, threads take a batch of 16 whenever they're free
-  
-  why 16 rows per chunk? honestly i just tried a few numbers and this worked best for my machine. 
-  if the batch size is small, there's too much coordination overhead. if batch size is large, 
-  performance cores idle after finishing their batch and now we're stuck waiting for the efficiency cores
-  16 isn't optimal for all grid sizes. for example, if grid has 16 interior rows, then each thread only gets 1 row
-
-  TODO: test static vs. dynamic scheduling on evaluator
+  dynamic schedule hands out work as threads become free, so fast cores take more chunks. hinders performance on evaluator though.
   
   observation: cores' private caches are too small to hold any meaningful fraction of a whole grid, so they need to fetch from the shared cache
   at the start of each time step. a lot of data is moved on the shared interconnect, so there's a cache bandwidth bottleneck s.t. 
