@@ -3,6 +3,46 @@
 #include <cstddef>
 #include <vector>
 #include <algorithm>
+#include <new>
+
+/* padding the row length only guarantees that rows sit at a uniform offset from the
+start of the allocation. if that start is not itself divisible by 64, every row is off
+by the same amount and no row begins at a cache line boundary. this allocator fixes the
+start, and std::vector still owns and frees the memory so no cleanup work moves to Grid */
+template <typename T, std::size_t Alignment>
+struct AlignedAllocator {
+  using value_type = T;
+
+  AlignedAllocator() noexcept = default;
+
+  template <typename U>
+  AlignedAllocator(const AlignedAllocator<U, Alignment>&) noexcept {}
+
+  // std::vector cannot derive this itself because Alignment is not a type parameter
+  template <typename U>
+  struct rebind {
+    using other = AlignedAllocator<U, Alignment>;
+  };
+
+  T* allocate(std::size_t n) {
+    return static_cast<T*>(::operator new(n * sizeof(T), std::align_val_t{Alignment}));
+  }
+
+  void deallocate(T* p, std::size_t) noexcept {
+    ::operator delete(p, std::align_val_t{Alignment});
+  }
+};
+
+// two of these allocators are interchangeable whenever their alignment matches
+template <typename T, typename U, std::size_t A>
+bool operator==(const AlignedAllocator<T, A>&, const AlignedAllocator<U, A>&) noexcept {
+  return true;
+}
+
+template <typename T, typename U, std::size_t A>
+bool operator!=(const AlignedAllocator<T, A>&, const AlignedAllocator<U, A>&) noexcept {
+  return false;
+}
 
 // Starter Grid for the 2D heat-diffusion problem.
 //
@@ -14,7 +54,7 @@ private:
   std::size_t rows_;
   std::size_t cols_;
   std::size_t stride_; // number of doubles per row
-  std::vector<double> cells_;
+  std::vector<double, AlignedAllocator<double, 64>> cells_;
 
 public:
   // round the size of a row up to the nearest multiple of the cache line size (64) so that each row starts at the beginning of each cache line
