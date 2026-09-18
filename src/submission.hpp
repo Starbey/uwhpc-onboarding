@@ -144,7 +144,7 @@ void apply_stencil(const Grid& old_grid, Grid& new_grid) {
   
   observation: cores' private caches are too small to hold any meaningful fraction of a whole grid, so they need to fetch from the shared cache
   at the start of each time step. a lot of data is moved on the shared interconnect, so there's a cache bandwidth bottleneck s.t. 
-  increasing # of threads only worsens performance */ 
+  increasing # of threads only worsens performance. on my machine, it flattened after 6 threads.*/ 
   #pragma omp parallel for schedule(static)
   for (std::size_t i = 1; i < in.rows - 1; i++) {  
     const double* top = in.cells + (i - 1) * in.stride;
@@ -152,6 +152,8 @@ void apply_stencil(const Grid& old_grid, Grid& new_grid) {
     const double* bottom = in.cells + (i + 1) * in.stride;
     double* out_row = out.cells + i * out.stride;
 
+    // rows are consecutive in memory. can fetch and add consecutive top, bottom, and center rows
+    #pragma omp simd
     for (std::size_t j = 1; j < in.cols - 1; j++) {
       // previously each cell access demanded a multiply and an add
       // explicitly defining each stride moves this work out of the inner loop
