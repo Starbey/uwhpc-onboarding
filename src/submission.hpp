@@ -125,7 +125,7 @@ struct GridView {
   }
 };
 
-void apply_stencil(const Grid& old_grid, Grid& new_grid) {
+inline void apply_stencil(const Grid& old_grid, Grid& new_grid) {
   ConstGridView in{old_grid.data(), old_grid.rows(), old_grid.cols(), old_grid.stride()};
   GridView out{new_grid.data(), new_grid.rows(), new_grid.cols(), new_grid.stride()};
 
