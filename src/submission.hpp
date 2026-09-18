@@ -57,8 +57,9 @@ private:
   std::vector<double, AlignedAllocator<double, 64>> cells_;
 
 public:
-  // round the size of a row up to the nearest multiple of the cache line size (64) so that each row starts at the beginning of each cache line
-  Grid(std::size_t rows, std::size_t cols) : rows_{rows}, cols_{cols}, stride_{(cols + 7) & ~std::size_t{7}}, cells_(rows * stride_, 0.0) {}
+  // round the size of a row up to the nearest multiple of the cache line size in doubles (8) so that each row starts at the beginning of each cache line
+  // i didn't see any speedup by rounding stride to a non-power of 2, multiple of 8 (e.g. 1032). likely that each set holds more than 2 cache lines
+  Grid(std::size_t rows, std::size_t cols) : rows_{rows}, cols_{cols}, stride_{((cols + 7) & ~std::size_t{7})}, cells_(rows * stride_, 0.0) {}
 
   std::size_t rows() const {
     return rows_;
