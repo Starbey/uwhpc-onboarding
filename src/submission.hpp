@@ -152,7 +152,7 @@ void apply_stencil(const Grid& old_grid, Grid& new_grid) {
     const double* bottom = in.cells + (i + 1) * in.stride;
     double* out_row = out.cells + i * out.stride;
 
-    // rows are consecutive in memory. can fetch and add consecutive top, bottom, and center rows
+    // rows are consecutive in memory and independent. can fetch and add consecutive top, bottom, and center rows
     #pragma omp simd
     for (std::size_t j = 1; j < in.cols - 1; j++) {
       // previously each cell access demanded a multiply and an add
