@@ -92,13 +92,7 @@ public:
 - copying a view copies the pointer plus extents and stride 
 - rationale behind extents: rows and cols are always used together */
 struct ReadOnlyGridView {
-    /* what restrict does:
-  - tells the compiler that the pointer is not aliased with any other pointer
-  - verified two separate Grid objects in the harness code
-  - allows compiler to hold values in registers and process cells in batches instead of fetching from memory after every write
-  - with restrict, the compiler can read all 4 cells at once and process them in parallel
-  - i noticed that this hardly makes a difference in performance probably because this problem is bottlenecked by memory access and not math*/
-  const double* __restrict cells;
+  const double* cells;
   std::array<std::size_t, 2> extents;
   std::size_t stride;
 
@@ -108,7 +102,7 @@ struct ReadOnlyGridView {
 };
 
 struct GridView {
-  double* __restrict cells;
+  double* cells;
   std::array<std::size_t, 2> extents;
   std::size_t stride;
 
@@ -139,11 +133,12 @@ inline void apply_stencil(const Grid& old_grid, Grid& new_grid) {
   at the start of each time step. a lot of data is moved on the shared interconnect, so there's a cache bandwidth bottleneck s.t. 
   increasing # of threads only worsens performance. on my machine, it flattened after 6 threads.*/ 
   #pragma omp parallel for schedule(static)
-  for (std::size_t i = 1; i < in.rows() - 1; i++) {  
-    const double* top = in.cells + (i - 1) * in.stride;
-    const double* center = in.cells + i * in.stride;
-    const double* bottom = in.cells + (i + 1) * in.stride;
-    double* out_row = out.cells + i * out.stride;
+  for (std::size_t i = 1; i < in.rows() - 1; i++) {
+    // none of the pointers are aliased, so restrict is appropriate
+    const double* __restrict top = in.cells + (i - 1) * in.stride;
+    const double* __restrict center = in.cells + i * in.stride;
+    const double* __restrict bottom = in.cells + (i + 1) * in.stride;
+    double* __restrict out_row = out.cells + i * out.stride;
 
     // rows are consecutive in memory and independent. can fetch and add consecutive top, bottom, and center rows
     #pragma omp simd
