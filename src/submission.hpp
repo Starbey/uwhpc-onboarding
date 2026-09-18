@@ -6,6 +6,9 @@
 #include <new>
 #include <array>
 
+inline constexpr std::size_t cache_line_size = 64;
+inline constexpr std::size_t cache_line_doubles = cache_line_size / sizeof(double);
+
 /* padding the row length only guarantees that rows sit at a uniform offset from the
 start of the allocation. if that start is not itself divisible by 64, every row is off
 by the same amount and no row begins at a cache line boundary. this allocator fixes the
@@ -54,12 +57,12 @@ class Grid {
 private:
   std::array<std::size_t, 2> extents_;
   std::size_t stride_;
-  std::vector<double, AlignedAllocator<double, 64>> cells_;
+  std::vector<double, AlignedAllocator<double, cache_line_size>> cells_;
 
 public:
   // round the size of a row up to the nearest multiple of the cache line size in doubles (8) so that each row starts at the beginning of each cache line
   // i didn't see any speedup by rounding stride to a non-power of 2, multiple of 8 (e.g. 1032). likely that each set holds more than 2 cache lines
-  Grid(std::size_t rows, std::size_t cols): extents_{{rows, cols}}, stride_{(cols + 7) & ~std::size_t{7}}, cells_(rows * stride_, 0.0) {}
+  Grid(std::size_t rows, std::size_t cols): extents_{{rows, cols}}, stride_{(cols + cache_line_doubles - 1) & ~(cache_line_doubles - 1)}, cells_(rows * stride_, 0.0) {}
 
   const std::array<std::size_t, 2>& extents() const { 
     return extents_; 
