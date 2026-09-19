@@ -113,13 +113,9 @@ inline void apply_stencil(const Grid& old_grid, Grid& new_grid) {
   GridView<const double> in{old_grid.data(), old_grid.extents(), old_grid.stride()};
   GridView<double> out{new_grid.data(), new_grid.extents(), new_grid.stride()};
 
-  for (std::size_t i = 0; i < in.rows(); i++) {
-    out(i, 0) = in(i, 0);
-    out(i, in.cols() - 1) = in(i, in.cols() - 1);
-  }
-
   // hand copying of top and bottom boundary rows to copy_n
   // copy_n uses wide instructions: good in this case where memory is contiguous
+  // includes the four corners, so the side copies below skip the first and last rows
   std::copy_n(in.cells, in.cols(), out.cells);
   std::copy_n(in.cells + (in.rows() - 1) * in.stride, in.cols(), out.cells + (out.rows() - 1) * out.stride);
 
@@ -138,8 +134,11 @@ inline void apply_stencil(const Grid& old_grid, Grid& new_grid) {
     const double* __restrict bottom = in.cells + (i + 1) * in.stride;
     double* __restrict out_row = out.cells + i * out.stride;
 
-    // peel 1,2,3 so the wide loop starts at a multiple of 4 (32 byte aligned if the row is)
     const std::size_t last_col = in.cols() - 1;
+    out_row[0] = center[0];
+    out_row[last_col] = center[last_col];
+
+    // peel 1,2,3 so the wide loop starts at a multiple of 4 (32 byte aligned if the row is)
     std::size_t j = 1;
     for (; j < last_col && (j % simd_doubles) != 0; j++) {
       out_row[j] = stencil(top, center, bottom, j);
