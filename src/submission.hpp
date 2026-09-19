@@ -150,5 +150,6 @@ inline void apply_stencil(const Grid& old_grid, Grid& new_grid) {
     for (std::size_t k = j; k < last_col; k++) {
       out_row[k] = stencil(top, center, bottom, k);
     }
+    // leftover interior columns (i.e. not divisible by 4)are peeled one at a time
   }
 }
