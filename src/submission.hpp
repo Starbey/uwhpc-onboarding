@@ -95,24 +95,14 @@ public:
 - copying a Grid copies the field
 - copying a view copies the pointer plus extents and stride 
 - rationale behind extents: rows and cols are always used together */
-struct ReadOnlyGridView {
-  const double* cells;
-  std::array<std::size_t, 2> extents;
-  std::size_t stride;
-
-  std::size_t rows() const { return extents[0]; }
-  std::size_t cols() const { return extents[1]; }
-  double operator()(std::size_t i, std::size_t j) const { return cells[i * stride + j]; }
-};
-
+template <typename T>
 struct GridView {
-  double* cells;
+  T* cells;
   std::array<std::size_t, 2> extents;
   std::size_t stride;
-
   std::size_t rows() const { return extents[0]; }
   std::size_t cols() const { return extents[1]; }
-  double& operator()(std::size_t i, std::size_t j) const { return cells[i * stride + j]; }
+  T& operator()(std::size_t i, std::size_t j) const { return cells[i * stride + j]; }
 };
 
 inline double stencil(const double* top, const double* center, const double* bottom, std::size_t col) {
@@ -120,8 +110,8 @@ inline double stencil(const double* top, const double* center, const double* bot
 }
 
 inline void apply_stencil(const Grid& old_grid, Grid& new_grid) {
-  ReadOnlyGridView in{old_grid.data(), old_grid.extents(), old_grid.stride()};
-  GridView out{new_grid.data(), new_grid.extents(), new_grid.stride()};
+  GridView<const double> in{old_grid.data(), old_grid.extents(), old_grid.stride()};
+  GridView<double> out{new_grid.data(), new_grid.extents(), new_grid.stride()};
 
   for (std::size_t i = 0; i < in.rows(); i++) {
     out(i, 0) = in(i, 0);
