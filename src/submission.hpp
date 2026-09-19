@@ -8,6 +8,7 @@
 
 inline constexpr std::size_t cache_line_size = 64;
 inline constexpr std::size_t cache_line_doubles = cache_line_size / sizeof(double);
+inline constexpr std::size_t simd_doubles = 4; // AVX2: 32-byte grab / 8-byte double
 
 /* padding the row length only guarantees that rows sit at a uniform offset from the
 start of the allocation. if that start is not itself divisible by 64, every row is off
@@ -114,6 +115,10 @@ struct GridView {
   double& operator()(std::size_t i, std::size_t j) const { return cells[i * stride + j]; }
 };
 
+inline double stencil(const double* top, const double* center, const double* bottom, std::size_t col) {
+  return 0.5 * center[col] + 0.125 * (top[col] + bottom[col] + center[col - 1] + center[col + 1]);
+}
+
 inline void apply_stencil(const Grid& old_grid, Grid& new_grid) {
   ReadOnlyGridView in{old_grid.data(), old_grid.extents(), old_grid.stride()};
   GridView out{new_grid.data(), new_grid.extents(), new_grid.stride()};
@@ -143,12 +148,18 @@ inline void apply_stencil(const Grid& old_grid, Grid& new_grid) {
     const double* __restrict bottom = in.cells + (i + 1) * in.stride;
     double* __restrict out_row = out.cells + i * out.stride;
 
+    // peel 1,2,3 so the wide loop starts at a multiple of 4 (32 byte aligned if the row is)
+    const std::size_t last_col = in.cols() - 1;
+    std::size_t j = 1;
+    for (; j < last_col && (j % simd_doubles) != 0; j++) {
+      out_row[j] = stencil(top, center, bottom, j);
+    }
+
     // rows are consecutive in memory and independent. can fetch and add consecutive top, bottom, and center rows
+    // now we start at a multiple of 32 bytes
     #pragma omp simd
-    for (std::size_t j = 1; j < in.cols() - 1; j++) {
-      // previously each cell access demanded a multiply and an add
-      // explicitly defining each stride moves this work out of the inner loop
-      out_row[j] = 0.5 * center[j] + 0.125 * (top[j] + bottom[j] + center[j - 1] + center[j + 1]);
+    for (std::size_t k = j; k < last_col; k++) {
+      out_row[k] = stencil(top, center, bottom, k);
     }
   }
 }
